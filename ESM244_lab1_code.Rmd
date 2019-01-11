@@ -1,0 +1,115 @@
+---
+title: "ESM244_lab1"
+author: "Sam Csik"
+date: "1/10/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Objectives:
+
+-basic review (data wrangling)
+-intro to spatial data in R with sf
+-intro to shiny apps
+
+Part 1. Attach packages
+```{r}
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(tmap)
+```
+
+Part 2. Review on reading, exploring, wrangling, and visualizing data
+
+a. Read in the data
+```{r}
+wine <- read_csv("wine_data.csv")
+```
+
+b. Wrangle data
+```{r}
+wine_new <- wine %>% 
+  select(country, province, winery, region_1, points, price) %>% 
+  rename(state = province) %>% 
+  filter(state == "California" | state == "Oregon" | state == "Washington") %>% 
+  mutate(ppd = points/price) %>% # add new columns
+  arrange(-ppd) # arrange in decreasing order of points per dollar
+```
+
+c. Use group_by() and summarize() to find summary statistics by group
+```{r}
+wine_summary <- wine_new %>% 
+  group_by(state) %>% 
+  summarise(
+    mean_ppd = mean(ppd, na.rm = TRUE),
+    max_ppd = max(ppd, na.rm = TRUE)
+  )
+```
+
+d. A few gg-graphics
+```{r}
+wine_hist <- ggplot(wine_new, aes(x = ppd)) + 
+  geom_histogram(aes(fill = state)) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black"), 
+          panel.border = element_rect(colour = "black", fill=NA, size=0.7), 
+          legend.position = "none") +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0)) +
+  facet_wrap(~state, scales = "free")
+wine_hist
+```
+
+new graph: scatterplot grpah of price vs. points, with color determined by state, adding a linear model trendline on top of it
+```{r}
+wine_points <- ggplot(wine_new, aes(x = price, y = points)) +
+  geom_point(aes(color = state), alpha = 0.5) +
+  geom_smooth(color = "black", method = "lm", se = FALSE) +
+  scale_color_manual(values = c("royalblue", "mediumorchid1", "orange")) +
+  facet_wrap(~state) +
+  theme_classic() +
+  theme(axis.text = element_text(color = "black"), 
+          panel.border = element_rect(colour = "black", fill=NA, size=0.7), 
+          legend.position = "none") 
+  
+wine_points 
+```
+
+Part 3. California counties (spatial data) using sf
+```{r}
+ca_counties <- st_read(dsn = ".", layer = "CA_Counties_TIGER2016") # "." means we're already in our wd; layer = "first common string name of each file used"
+
+ca_land <- ca_counties %>% 
+  select(NAME, ALAND)
+
+ca_pop_inc <- read_csv("ca_pop_inc.csv")  %>% 
+  rename(NAME = COUNTY) 
+
+ca_df <- full_join(ca_land, ca_pop_inc) %>% # merge ca_pop_inc to ca_land; full_join will keep every row, even if there isn't a match
+  select(NAME, MedFamilyIncome)
+
+# plot(ca_counties)
+
+```
+
+d. use geom_sf to make a map in ggplot
+```{r}
+ca_income <- ggplot(ca_df) +
+  geom_sf(aes(fill = MedFamilyIncome))
+
+ca_income
+
+ca_df_transform <- st_transform(ca_df, crs = 4326)
+
+leaflet(ca_df_transform) %>% 
+  addTiles() %>% 
+  addPolygons()
+```
+
+
